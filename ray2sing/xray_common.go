@@ -1,6 +1,8 @@
 package ray2sing
 
 import (
+	"fmt"
+
 	E "github.com/sagernet/sing/common/exceptions"
 	"github.com/xtls/xray-core/infra/conf"
 
@@ -223,4 +225,98 @@ func getXrayFragmentOptions(decoded map[string]string) *conf.Fragment {
 	}
 
 	return &trick
+}
+
+func getStreamSettingsXrayFromSingbox(out map[string]any) (map[string]any, error) {
+	res := map[string]any{}
+	transport := out["transport"].(map[string]any)
+	net := transport["type"].(string)
+	res["network"] = net
+	switch net {
+	case "ws":
+		res["wsSettings"] = getwebsocketSingbox(transport)
+	default:
+		return nil, E.New("unknown transport type: " + net)
+	}
+	tls := getTLSOptionsXrayFromSingbox(out)
+	if tls != nil {
+		res["security"] = "tls"
+		res["tlsSettings"] = tls
+	}
+	// reality := getRealityOptionsXrayFromSingbox(out)
+	// if reality != nil {
+	// 	res["security"] = "reality"
+	// 	res["realitySettings"] = reality
+	// }
+	return res, nil
+}
+
+func getwebsocketSingbox(decoded map[string]any) map[string]any {
+	path := decoded["path"]
+	if path == "" {
+		path = "/"
+	}
+	return map[string]any{
+		"path": path,
+		"host": decoded["headers"].(map[string]any)["Host"].(string),
+		"headers": map[string]string{
+			"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36",
+		},
+	}
+}
+
+func getTLSOptionsXrayFromSingbox(decoded map[string]any) map[string]any {
+	fmt.Println(decoded)
+	if decoded["tls"].(map[string]any) == nil || decoded["tls"].(map[string]any)["enable"] == false {
+		return nil
+	}
+	serverName := decoded["tls"].(map[string]any)["server_name"].(string)
+	if serverName == "" {
+		return nil
+	}
+	alpn := []string{"http/1.1"}
+
+	// tls := decoded["tls"].(map[string]any)
+	fp := ""
+	// if tls != nil {
+	// 	utls := tls["utls"].(map[string]any)
+	// 	if utls != nil {
+	// 		fp = utls["fingerprint"]
+	// 	}
+	// }
+	if fp == "" {
+		fp = "chrome"
+	}
+
+	return map[string]any{
+		"serverName":       serverName,
+		"rejectUnknownSni": false,
+		"allowInsecure":    false,
+		"alpn":             alpn,
+		"fingerprint":      fp,
+	}
+}
+
+func getRealityOptionsXrayFromSingbox(decoded map[string]any) map[string]any {
+	if decoded["security"].(map[string]any) == nil || decoded["security"].(map[string]interface{})["enable"] == false {
+		return nil
+	}
+	securityMap := decoded["security"].(map[string]any)
+	serverName := securityMap["server_name"].(string)
+	if serverName == "" {
+		return nil
+	}
+	utls := securityMap["utls"].(map[string]any)
+	fp := utls["fingerprint"]
+	if fp == "" {
+		fp = "chrome"
+	}
+
+	return map[string]any{
+		"serverName":  serverName,
+		"fingerprint": fp,
+		"shortId":     utls["short_id"],
+		"spiderX":     utls["spider_x"],
+		"publicKey":   utls["public_key"],
+	}
 }
